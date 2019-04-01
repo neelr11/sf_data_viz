@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+</head>
+<style>
+.neighborhood {
+  fill: white;
+}
+
+
+.neighborhood-boundary {
+  fill: "none";
+  stroke: black;
+  stroke-linejoin: round;
+}
+
+body {
+   font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+  font-weight: bolder;
+}
+
+
+</style>
+<body>
+
+    <div id="prev">
+        <input id="prevButton"
+               type="button"
+               class="btn"
+               value="Previous"
+               onclick="prevYear()" />
+    </div>
+    <div id="next">
+        <input id="nextButton"
+               type="button"
+               class="btn"
+               value="Next"
+               onclick="nextYear()" />
+    </div>
+    <div id="stats">
+      <p id="year"></p>
+      <p id="evictions"></p>
+    </div>
+
+
+<svg width="750" height="600" id="map"></svg>
+<svg width="300" height="50" id="legend"><g></g></svg>
+
+<script src="//d3js.org/d3.v4.min.js" charset="utf-8"></script>
+<script src="//d3js.org/topojson.v1.min.js"></script>
+<script>
+
+var width = 1200;
+    height = 900;
+var cutoffs = [25, 50, 75, 125, 200, 400];
+var hues = ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"];
+var threshold = d3.scaleThreshold().domain(cutoffs).range(hues);
+
+var minYear = 1997;
+var maxYear = 2018;
+var currentYear = minYear;
+document.getElementById("prevButton").disabled = true;
+
+d3.select("#year")
+  .text(currentYear)
+d3.select("#evictions")
+  .text('Total');
+
+var svg = d3.select("#map")
+
+/* JavaScript goes here. */
+d3.json("AnalysisNeighborhoods.json", function(error, data) {
+  if (error) return console.error(error);
+  var neighborhoods = topojson.feature(data, data.objects.AnalysisNeighborhoods);
+  var bounds = d3.geoBounds(neighborhoods)
+  var centerX = d3.sum(bounds, function(d) {return d[0];}) / 2,
+      centerY = d3.sum(bounds, function(d) {return d[1];}) / 2;
+
+  var projection = d3.geoMercator()
+    .scale(180000)
+    .center([centerX, centerY])
+
+  var path = d3.geoPath()
+      .projection(projection);
+
+  svg.append("path")
+      .datum(neighborhoods)
+      .attr("class", "map")
+      .attr("d", path);
+
+  svg.selectAll(".neighborhood")
+      .data(topojson.feature(data, data.objects.AnalysisNeighborhoods).features)
+    .enter().append("path")
+      .attr("class", function(d) { return "neighborhood " + d.properties.nhood.replace(" ", "_"); })
+      .attr("d", path)
+      .style("fill", function(d) {
+        return threshold(d.properties.evictions[currentYear]);
+      })
+      .on("mouseover", handleMouseOver)
+      .on("mouseout", handleMouseOut);
+
+
+  svg.append("path")
+    .datum(topojson.mesh(data, data.objects.AnalysisNeighborhoods, function(a, b) { return a !== b; }))
+    .attr("fill", "none")
+    .attr("stroke", "black")
+    .attr("stroke-width", "1px")
+    .attr("opacity", "0.1")
+    .attr("stroke-linejoin", "round")
+    .attr("d", path)
+    .attr("class", "neighborhood-boundary interior");
+
+  svg.append("path")
+    .datum(topojson.mesh(data, data.objects.AnalysisNeighborhoods, function(a, b) { return a === b; }))
+    .attr("fill", "none")
+    .attr("stroke", "black")
+    .attr("stroke-width", "1px")
+    .attr("opacity", "0.1")
+    .attr("stroke-linejoin", "round")
+    .attr("d", path)
+    .attr("class", "neighborhood-boundary exterior");
+});
+
+function prevYear() {
+  currentYear = currentYear - 1;
+
+  d3.select("#year")
+  .transition().duration(2500)
+  .text(currentYear)
+
+  var svg = d3.select("svg")
+  svg.selectAll(".neighborhood")
+    .transition().duration(500)
+    .style("fill", function(d) {
+          return threshold(d.properties.evictions[currentYear]);
+        });
+  if (currentYear === minYear) {
+    document.getElementById("prevButton").disabled = true;
+  } else {
+    document.getElementById("prevButton").disabled = false;
+    document.getElementById("nextButton").disabled = false;
+  }
+}
+
+function nextYear() {
+  currentYear = currentYear + 1;
+
+  d3.select("#year")
+  .transition().duration(2500)
+  .text(currentYear)
+
+  var svg = d3.select("svg")
+  svg.selectAll(".neighborhood")
+    .transition().duration(500)
+    .style("fill", function(d) {
+          return threshold(d.properties.evictions[currentYear]);
+        });
+  if (currentYear === maxYear) {
+    document.getElementById("nextButton").disabled = true;
+  } else {
+    document.getElementById("prevButton").disabled = false;
+    document.getElementById("nextButton").disabled = false;
+  }
+}
+
+function handleMouseOver(d) {
+  d3.select("#evictions")
+  .text(d.properties.nhood + ": " + d.properties.evictions[currentYear]);
+}
+
+function handleMouseOut(d) {
+  d3.select("#evictions")
+  .text('Total');
+
+}
+
+var x = d3.scaleLinear()
+    .domain([0, 300])
+    .range([0, 240]);
+
+var xAxis = d3.axisBottom(x)
+    .tickSize(13)
+    .tickValues([0, 25, 50, 75, 125, 200, 400])
+
+var g = d3.select("#legend").call(xAxis).attr("overflow", "visible");
+
+g.select(".domain")
+    .remove();
+
+g.selectAll("rect")
+  .data(threshold.range().map(function(color) {
+    var d = threshold.invertExtent(color);
+    console.log(d)
+    if (d[0] == null) d[0] = x.domain()[0];
+    if (d[1] == null) d[1] = x.domain()[1];
+    return d;
+  }))
+  .enter().insert("rect", ".tick")
+    .attr("height", 8)
+    .attr("x", function(d) { return x(d[0]); })
+    .attr("width", function(d) { return x(d[1]) - x(d[0]); })
+    .attr("fill", function(d) { return threshold(d[0]); });
+
+g.append("text")
+    .attr("fill", "black")
+    .attr("font-weight", "bold")
+    .attr("text-anchor", "start")
+    .attr("y", -6)
+    .text("Number of evictions");
+
+</script>
